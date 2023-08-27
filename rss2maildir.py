@@ -31,7 +31,7 @@ import urllib.request
 class defaults:
     """Contains global default values"""
     maildir = os.path.expanduser("~/.mail/rss/")
-    config = os.path.expanduser("~/.cache/rss2maildir.json")
+    config = os.path.expanduser("~/.config/rss2maildir.json")
     cache = os.path.expanduser("~/.cache/rss2mail/")
     maildir_cache = os.path.expanduser("~/.mail/rss.rss2maildircache")
     use_single_maildir = False
