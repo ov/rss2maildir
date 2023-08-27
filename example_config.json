@@ -13,7 +13,8 @@
         },
         {
             "name": "HackerNews",
-            "url": "https://news.ycombinator.com/rss"
+            "url": "https://news.ycombinator.com/rss",
+			"links": true
         }
     ]
 }

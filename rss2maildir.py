@@ -26,6 +26,7 @@ import time
 import json
 import getpass
 import urllib.request
+import html2text
 
 
 class defaults:
@@ -108,6 +109,13 @@ def load_config():
         if 'maildir' in single_feed:
             feed.maildir = single_feed["maildir"]
 
+        feed.links = False
+        if 'links' in single_feed:
+            feed.links = single_feed["links"]
+            if not isinstance(feed.links, bool):
+                print("feed.links has to be true or false")
+                exit(1)
+
         if not feed.name:
             print("Missing feed name. Aborting...")
             exit(1)
@@ -119,7 +127,7 @@ def load_config():
     return feed_list
 
 
-def update_maildir(maildir, rss, origin):
+def update_maildir(maildir, rss, origin, links):
     """
     Creates or updates the given maildir and fills it with the messages
     maildir - Maildir that shall be used
@@ -163,14 +171,20 @@ def update_maildir(maildir, rss, origin):
         msg['To'] = defaults.mail_recipient
         msg['Subject'] = rss.title
 
-        message_text = ""
-
-        if "link" in rss:
-            message_text = rss.link + "\n"
+        message_texts = []
 
         if "description" in rss:
-            message_text = message_text + rss.description
-        message = message_text
+            converter = html2text.HTML2Text()
+            if not links:
+                converter.ignore_links = True
+                converter.ignore_images = True
+            txt = converter.handle(rss.description)
+            message_texts.append(txt)
+
+        if "link" in rss:
+            message_texts.append(rss.link)
+
+        message = "\n".join(message_texts)
 
         msg.set_payload(message.encode('utf-8'))
 
@@ -362,7 +376,7 @@ def download_feed(feed):
 
     if new_entries:
         for item in new_entries:
-            update_maildir(maildir, item, feed.feed['feed']['title'])
+            update_maildir(maildir, item, feed.feed['feed']['title'], feed.links)
 
     else:
         print("    No new messages.")

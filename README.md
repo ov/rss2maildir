@@ -57,9 +57,9 @@ An annotated config lookes like this:
             },
             {
                 "name": "HackerNews",
-                "url": "https://news.ycombinator.com/rss"
-                # store this feed explicitly in this Maildir
-                "maildir": "~/.mail/rss/news"
+                "url": "https://news.ycombinator.com/rss",
+                "maildir": "~/.mail/rss/news", # use this maildir
+                "links": true # keep links in the message text
             }
         ]
     }
@@ -111,6 +111,9 @@ URL of the feed that shall be downloaded.
 
 #### feeds:maildir
 Specific Maildir for this feed. Overwrites all other Maildir settings.
+
+#### feeds:links
+Keep links in the message text. False by default
 
 ## License
 
