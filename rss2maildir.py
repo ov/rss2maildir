@@ -204,11 +204,12 @@ def write_cache(rss_list):
     """
     rss_list - list of rss_feed objects that should be cached
     """
-    if not os.path.exists(defaults.cache):
-        os.makedirs(defaults.cache)
+    cpath = os.path.expanduser(defaults.cache)
+    if not os.path.exists(cpath):
+        os.makedirs(cpath)
 
     for rss in rss_list:
-        filename = os.path.expanduser(defaults.cache) + "/" + rss.name
+        filename = cpath + "/" + rss.name
         save_object(rss.xml, filename)
 
 
