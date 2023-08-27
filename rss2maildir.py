@@ -189,14 +189,15 @@ def load_cache(rss_list):
 
         if os.path.isfile(filename):
             with open(filename, 'rb') as input_file:
-                rss.cache = feedparser.parse(input_file.read().replace('\n',
-                                                                       ''))
+                data = input_file.read()
+                data = str(data).replace('\n', '')
+                rss.cache = feedparser.parse(data)
 
 
 def save_object(obj, filename):
     """Save object to given file"""
     with open(filename, 'wb') as output:
-        output.write(obj)
+        output.write(obj.encode())
 
 
 def write_cache(rss_list):
