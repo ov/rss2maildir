@@ -210,6 +210,8 @@ def load_cache(rss_list):
 
 def save_object(obj, filename):
     """Save object to given file"""
+    if obj is None:
+        return
     with open(filename, 'wb') as output:
         output.write(obj.encode())
 
@@ -351,12 +353,17 @@ def download_feed(feed):
     print("Downloading '{0}'...".format(feed.url))
     user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
 
-    headers = {'User-Agent': user_agent, }
-    request = urllib.request.Request(feed.url, None, headers)
-    response = urllib.request.urlopen(request, None, timeout=10)
-    data = response.read()
-    feed.xml = data.decode('utf-8')
-    feed.feed = feedparser.parse(feed.xml)
+    try:
+        headers = {'User-Agent': user_agent, }
+        request = urllib.request.Request(feed.url, None, headers)
+        response = urllib.request.urlopen(request, None, timeout=10)
+        data = response.read()
+        feed.xml = data.decode('utf-8')
+        feed.feed = feedparser.parse(feed.xml)
+    except Exception as e:
+        print("Unable to download feed {0}: {1}".format(feed.url, e))
+        return
+
 
     if not feed.feed:
         print("Unable to download {0}".format(feed.url))
