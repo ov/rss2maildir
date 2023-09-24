@@ -18,6 +18,7 @@
 
 
 import os
+import fcntl
 import mailbox
 import feedparser
 import sys
@@ -402,6 +403,15 @@ Options:
            defaults.config,
            defaults.cache))
 
+def lock_file():
+    fname = "/tmp/rss2maildir.lock"
+    handle = open(fname, 'w')
+    try:
+        fcntl.lockf(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except IOError:
+        return None
+
 
 def main(argv):
     """Entry point"""
@@ -422,6 +432,11 @@ def main(argv):
             defaults.config = arg
         elif opt in ("-t", "--cache"):
             defaults.cache = arg
+
+    lock = lock_file()
+    if lock == None:
+        print("Another copy of rss2mailbox is running")
+        sys.exit()
 
     feeds = load_config()
 
