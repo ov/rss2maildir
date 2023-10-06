@@ -24,6 +24,7 @@ import feedparser
 import sys
 import getopt
 import time
+from datetime import date, datetime, timedelta
 import json
 import getpass
 import urllib.request
@@ -37,9 +38,9 @@ class defaults:
     cache = os.path.expanduser("~/.cache/rss2mail/")
     maildir_cache = os.path.expanduser("~/.mail/rss.rss2maildircache")
     use_single_maildir = False
-    use_maildir_cache = False
     mail_sender = "rss2mail"
     mail_recipient = getpass.getuser() + "@localhost"
+    days_to_remember = 14
 
 
 class rss_feed:
@@ -48,9 +49,8 @@ class rss_feed:
         self.name = ""
         self.url = ""
         self.maildir = ""
-        self.feed = None
+        self.days_to_remember = 0
         self.cache = None
-        self.xml = None
 
 
 def load_config():
@@ -65,11 +65,12 @@ def load_config():
             print("use_single_maildir has to be true or false")
             exit(1)
 
-    if "use_maildir_cache" in config["general"]:
-        defaults.use_maildir_cache = config["general"]["use_maildir_cache"]
-        if not isinstance(defaults.use_maildir_cache, bool):
-            print("use_maildir_cache has to be true or false")
+    if "days_to_remember" in config["general"]:
+        dtr = config["general"]["days_to_remember"]
+        if not isinstance(dtr, int):
+            print("days_to_remember has to be integer")
             exit(1)
+        defaults.days_to_remember = dtr
 
     if "sender" in config["general"]:
         defaults.mail_sender = config["general"]["sender"]
@@ -110,6 +111,14 @@ def load_config():
         if 'maildir' in single_feed:
             feed.maildir = single_feed["maildir"]
 
+        feed.days_to_remember = defaults.days_to_remember
+        if 'days_to_remember' in single_feed:
+            dtr = single_feed["days_to_remember"]
+            if not isinstance(dtr, int):
+                print("feed.days_to_remember has to be integer")
+                exit(1)
+            feed.days_to_remember = dtr
+
         feed.links = False
         if 'links' in single_feed:
             feed.links = single_feed["links"]
@@ -127,7 +136,6 @@ def load_config():
 
     return feed_list
 
-
 def update_maildir(maildir, rss, origin, links):
     """
     Creates or updates the given maildir and fills it with the messages
@@ -139,34 +147,6 @@ def update_maildir(maildir, rss, origin, links):
     mbox.lock()
     try:
         msg = mailbox.MaildirMessage()
-        # msg.set_charset('utf-8')
-        if 'published' in rss:
-            msg.set_unixfrom('{0} Date: {1}'.format(origin, rss.published))
-            msg.__setitem__('Date', rss.published)
-        elif 'updated' in rss:
-            # atom feeds use '2015-05-31T19:57:15+02:00'
-            # python requires timezone offset to be without ':'
-            time_string = rss.updated
-            if 'Z' in time_string:
-                # special cases like: http://www.geeksworld.org/flux.rss.php
-                # do not set utc offset
-                # their timestamp looks like 2015-07-06T00:01:00Z
-                entry_time = time.strptime(time_string, '%Y-%m-%dT%H:%M:%SZ')
-                msg.__setitem__('Date',
-                                time.strftime("%a, %d %b %Y %H:%M:%S %z",
-                                              entry_time))
-
-            else:
-
-                k = rss.updated.rfind(":")
-                time_string = time_string[:k] + time_string[k+1:]
-
-                entry_time = time.strptime(time_string, '%Y-%m-%dT%H:%M:%S%z')
-                msg.__setitem__('Date',
-                                time.strftime("%a, %d %b %Y %H:%M:%S %z",
-                                              entry_time))
-        else:
-            print("no date available")
 
         msg['From'] = origin
         msg['To'] = defaults.mail_recipient
@@ -196,148 +176,107 @@ def update_maildir(maildir, rss, origin, links):
         mbox.unlock()
 
 
-def load_cache(rss_list):
+def load_cache(rss):
     """Load cache file and fill rss feeds with their values"""
 
-    for rss in rss_list:
-        filename = os.path.expanduser(defaults.cache) + "/" + rss.name
-
-        if os.path.isfile(filename):
-            with open(filename, 'rb') as input_file:
-                data = input_file.read()
-                data = str(data).replace('\n', '')
-                rss.cache = feedparser.parse(data)
+    filename = os.path.expanduser(defaults.cache) + "/" + rss.name + ".json"
+    if os.path.isfile(filename):
+        with open(filename, 'rb') as input_file:
+            data = input_file.read()
+            rss.cache = json.loads(data)
 
 
 def save_object(obj, filename):
     """Save object to given file"""
     if obj is None:
         return
-    with open(filename, 'wb') as output:
-        output.write(obj.encode())
+    try:
+        with open(filename, 'wb') as output:
+            output.write(obj.encode())
+    except Exception as e:
+        print(" - ERROR saving to {0}: {1}".format(filename, e))
 
 
-def write_cache(rss_list):
-    """
-    rss_list - list of rss_feed objects that should be cached
-    """
+def expire(cache, dtr):
+    today = date.today()
+    threshold = timedelta(days=dtr)
+    res = {}
+
+    for l, d in cache.items():
+        dt = datetime.strptime(d, "%Y-%m-%d").date()
+        dist = today - dt
+        if dist < threshold:
+            res[l] = d
+
+    return res
+
+def write_cache(rss):
+    if rss.cache == None:
+        return
+
     cpath = os.path.expanduser(defaults.cache)
     if not os.path.exists(cpath):
         os.makedirs(cpath)
 
-    for rss in rss_list:
-        filename = cpath + "/" + rss.name
-        save_object(rss.xml, filename)
+    cache = expire(rss.cache, rss.days_to_remember)
+
+    filename = cpath + "/" + rss.name + ".json"
+    jdata = json.dumps(cache)
+    save_object(jdata, filename)
 
 
-def read_mail_cache(rss_list):
-    """Read cache from Maildir and fill rss_list caches where possible"""
-    print("Reading mail cache {0}".format(defaults.cache))
-    mbox = mailbox.Maildir(defaults.cache)
-    mbox.lock()
+def item_id(item):
     try:
-        for key, message in mbox.iteritems():
-            try:
-                byte_pickle = message.get_payload(decode=True)
-            except:
-                print("Unable to open cache file ignoring")
-                continue
+        id = None
+        if "id" in item:
+            id = item.id
+        else:
+            id = item.link
 
-            for rss in rss_list:
-                print("    Comparing {0} to {1}".format(message['subject'],
-                                                        rss.name))
-                if rss.name == message['subject']:
-                    print("Found cache for {0}".format(rss.name))
-                    rss.cache = feedparser.parse(byte_pickle)
-                    mbox.remove(key)
-                    mbox.flush()
-                    break
+        # some websites flip http/https in feeds, so cut them out
+        id = id.removeprefix("https:")
+        id = id.removeprefix("http:")
+        return id
+    except Exception as e:
+        print(f"item_id, exception: {e}, item = {item}")
+        sys.exit(20)
 
-    finally:
-        mbox.unlock()
+def rss_item_datetime(item):
+    dt = None
+    if "published_parsed" in item:
+        dt = item.published_parsed
+    elif "updated_parsed" in item:
+        dt = item.updated_parsed
 
+    if dt == None:
+        return datetime.now()
 
-def clear_mail_cache():
-    """Delete all mails found in cache Maildir"""
-    mbox = mailbox.Maildir(defaults.cache)
-    mbox.lock()
-    for key, msg in mbox.iteritems():
-        mbox.remove(key)
-        mbox.flush()
-        mbox.close()
+    return datetime.fromtimestamp(time.mktime(dt))
 
-
-def write_mail_cache(rss_list):
-    """
-    Write elements from rss_list to Maildir
-    """
-
-    # Ensure mail cache is empty, so that we do not produce duplicates
-    # clear_mail_cache()
-    print("Writing mail cache {0}".format(defaults.cache))
-    mbox = mailbox.Maildir(defaults.cache)
-    mbox.lock()
-    try:
-        for f in rss_list:
-            print("Saving at: {0}".format(f.name))
-            msg = mailbox.MaildirMessage()
-
-            msg.__setitem__('Date',
-                            time.strftime("%a, %d %b %Y %H:%M:%S %z",
-                                          time.gmtime()))
-
-            msg['From'] = defaults.mail_sender
-            msg['To'] = defaults.mail_recipient
-            msg['Subject'] = f.name
-            try:
-                msg.set_payload(f.xml.encode('utf-8'))
-                print("Saving mail cache for {0}".format(f.name))
-
-                mbox.add(msg)
-
-            except Exception as e:
-                print("Unable to create cache object for {0} -> {1}".format(f.name, e))
-                continue
-
-            mbox.flush()
-
-    finally:
-        mbox.unlock()
-
-
-def extract_new_items(new_list, old_list):
+def extract_new_items(new_list, feed):
     """Extract new feed entries
     new_list - list from which new entries shall be extracted
     old_list - list whith which new_list is compared
 
     returns array of entries found in new_list and not in old_list
     """
-    has_guid = False
 
     if not new_list:
         print("Empty list!")
         return []
 
-    if "id" in new_list[0]:
-        has_guid = True
+    today = date.today()
+    threshold = timedelta(days=feed.days_to_remember)
 
     new_entries = []
     for item in new_list:
-        is_new = True
+        new_id = item_id(item)
+        if feed.cache == None or new_id not in feed.cache:
 
-        if has_guid:
-            for j in old_list:
-                if item.id == j.id:
-                    is_new = False
-                    break
-        else:
-            for j in old_list:
-                if item.link == j.link:
-                    is_new = False
-                    break
-
-        if is_new:
-            new_entries.append(item)
+            dt = rss_item_datetime(item).date()
+            delta = today - dt
+            if delta < threshold:
+                new_entries.append(item)
 
     return new_entries
 
@@ -354,40 +293,37 @@ def download_feed(feed):
     print("Downloading '{0}'...".format(feed.url))
     user_agent = 'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-US; rv:1.9.0.7) Gecko/2009021910 Firefox/3.0.7'
 
+    feedObject = None
+
     try:
         headers = {'User-Agent': user_agent, }
         request = urllib.request.Request(feed.url, None, headers)
         response = urllib.request.urlopen(request, None, timeout=10)
         data = response.read()
-        feed.xml = data.decode('utf-8')
-        feed.feed = feedparser.parse(feed.xml)
+        xml = data.decode('utf-8')
+        feedObject = feedparser.parse(xml)
     except Exception as e:
         print("Unable to download feed {0}: {1}".format(feed.url, e))
         return
 
-
-    if not feed.feed:
+    if not feedObject:
         print("Unable to download {0}".format(feed.url))
         return
 
-    if feed.cache is not None:
-        # diff the two lists and only use new entries
-        new_entries = extract_new_items(feed.feed.entries, feed.cache.entries)
-
-        for item in new_entries:
-            print("    New entry: {0}".format(item.title))
-    else:
-        # it is a new feed
-        new_entries = feed.feed.entries
+    new_entries = extract_new_items(feedObject.entries, feed)
 
     maildir = feed.maildir
 
     if new_entries:
-        for item in new_entries:
-            update_maildir(maildir, item, feed.feed['feed']['title'], feed.links)
+        if feed.cache == None:
+            feed.cache = {}
 
-    else:
-        print("    No new messages.")
+        for item in new_entries:
+            update_maildir(maildir, item, feedObject['feed']['title'], feed.links)
+            iid = item_id(item)
+            dt = rss_item_datetime(item).date()
+            sdt = dt.strftime("%Y-%m-%d")
+            feed.cache[iid] = sdt
 
 
 def print_help():
@@ -440,18 +376,10 @@ def main(argv):
 
     feeds = load_config()
 
-    if defaults.use_maildir_cache:
-        read_mail_cache(feeds)
-    else:
-        load_cache(feeds)
-
-    for single_feed in feeds:
-        download_feed(single_feed)
-
-    if defaults.use_maildir_cache:
-        write_mail_cache(feeds)
-    else:
-        write_cache(feeds)
+    for feed in feeds:
+        load_cache(feed)
+        download_feed(feed)
+        write_cache(feed)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
