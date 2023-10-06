@@ -152,6 +152,9 @@ def update_maildir(maildir, rss, origin, links):
         msg['To'] = defaults.mail_recipient
         msg['Subject'] = rss.title
 
+        dt = rss_item_datetime(rss)
+        msg.__setitem__('Date', f'{dt:%a}, {dt.day} {dt:%b} {dt.year} {dt:%H}:{dt:%M}:{dt:%S} +0000')
+
         message_texts = []
 
         if "description" in rss:
