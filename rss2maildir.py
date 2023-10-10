@@ -42,6 +42,7 @@ class defaults:
     mail_sender = "rss2mail"
     mail_recipient = getpass.getuser() + "@localhost"
     days_to_remember = 14
+    mark_as_read = False
 
 
 class rss_feed:
@@ -95,6 +96,12 @@ def load_config():
         defaults.maildir = config["general"]["maildir"]
         if not isinstance(defaults.cache, str):
             print("maildir has to be a string")
+            exit(1)
+
+    if "mark_as_read" in config["general"]:
+        defaults.mark_as_read = config["general"]["mark_as_read"]
+        if not isinstance(defaults.mark_as_read, bool):
+            print("mark_as_read has to be true or false")
             exit(1)
 
     feed_list = []
@@ -172,6 +179,9 @@ def update_maildir(maildir, rss, origin, links):
         message = "\n".join(message_texts)
 
         msg.set_payload(message.encode('utf-8'))
+
+        if defaults.mark_as_read:
+            msg.add_flag("S")
 
         mbox.add(msg)
         mbox.flush()
