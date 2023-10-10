@@ -29,6 +29,7 @@ import json
 import getpass
 import urllib.request
 import html2text
+import html
 
 
 class defaults:
@@ -150,7 +151,7 @@ def update_maildir(maildir, rss, origin, links):
 
         msg['From'] = origin
         msg['To'] = defaults.mail_recipient
-        msg['Subject'] = rss.title
+        msg['Subject'] = html.unescape(rss.title)
 
         dt = rss_item_datetime(rss)
         msg.__setitem__('Date', f'{dt:%a}, {dt.day} {dt:%b} {dt.year} {dt:%H}:{dt:%M}:{dt:%S} +0000')
