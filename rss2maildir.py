@@ -181,6 +181,7 @@ def update_maildir(maildir, rss, origin, links):
         msg.set_payload(message.encode('utf-8'))
 
         if defaults.mark_as_read:
+            msg.set_subdir("cur")
             msg.add_flag("S")
 
         mbox.add(msg)
