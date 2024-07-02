@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 """This script downloads rss feeds and stores them in a maildir"""
 
 # Copyright(C) 2015 Edgar Thier
@@ -30,6 +30,7 @@ import getpass
 import urllib.request
 import html2text
 import html
+import email.utils
 
 
 class defaults:
@@ -39,7 +40,7 @@ class defaults:
     cache = os.path.expanduser("~/.cache/rss2mail/")
     maildir_cache = os.path.expanduser("~/.mail/rss.rss2maildircache")
     use_single_maildir = False
-    mail_sender = "rss2mail"
+    mail_sender = "noreply@localhost"
     mail_recipient = getpass.getuser() + "@localhost"
     days_to_remember = 14
     mark_as_read = False
@@ -156,7 +157,7 @@ def update_maildir(maildir, rss, origin, links):
     try:
         msg = mailbox.MaildirMessage()
 
-        msg['From'] = origin
+        msg['From'] = email.utils.formataddr((origin, defaults.mail_sender))
         msg['To'] = defaults.mail_recipient
         msg['Subject'] = html.unescape(rss.title)
 
@@ -240,6 +241,14 @@ def write_cache(rss):
     save_object(jdata, filename)
 
 
+def remove_prefix(text, prefix):
+    try:
+        return text.removeprefix(prefix)
+    except AttributeError:
+        if text.startswith(prefix):
+            return text[len(prefix):]
+        return text
+
 def item_id(item):
     try:
         id = None
@@ -249,8 +258,8 @@ def item_id(item):
             id = item.link
 
         # some websites flip http/https in feeds, so cut them out
-        id = id.removeprefix("https:")
-        id = id.removeprefix("http:")
+        id = remove_prefix(id, "https:")
+        id = remove_prefix(id, "http:")
         return id
     except Exception as e:
         print(f"item_id, exception: {e}, item = {item}")
