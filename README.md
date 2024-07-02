@@ -45,8 +45,8 @@ An annotated config lookes like this:
             "use_maildir_cache": true,
             # Should all mails be stored in a single Maildir
             "use_single_maildir": true,
-            # Under what name should the script send mails
-            "mail_sender": "rss2emaildir"
+            # What to put to the "From" field
+            "mail_sender": "noreply@localhost"
         },
         # list of subscriptions
         "feeds": [
